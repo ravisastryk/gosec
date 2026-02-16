@@ -351,4 +351,261 @@ func simpleHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 `}, 0, gosec.NewConfig()},
+
+	// Vulnerable: loop with http.Get blocking call (no ctx.Done guard)
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+	"time"
+)
+
+func pollAPI(ctx context.Context) {
+	for {
+		resp, _ := http.Get("https://api.example.com")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(time.Second)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: loop with database query (no ctx.Done guard)
+	{[]string{`
+package main
+
+import (
+	"context"
+	"database/sql"
+	"time"
+)
+
+func pollDB(ctx context.Context, db *sql.DB) {
+	for {
+		db.Query("SELECT 1")
+		time.Sleep(time.Second)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: loop with os.ReadFile blocking call
+	{[]string{`
+package main
+
+import (
+	"context"
+	"os"
+	"time"
+)
+
+func watchFile(ctx context.Context) {
+	for {
+		os.ReadFile("config.txt")
+		time.Sleep(time.Second)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Safe: loop with blocking call AND ctx.Done guard
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+	"time"
+)
+
+func safePoller(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			resp, _ := http.Get("https://api.example.com")
+			if resp != nil {
+				resp.Body.Close()
+			}
+		}
+	}
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: goroutine with TODO instead of passed context
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func startWorker(ctx context.Context) {
+	go func() {
+		newCtx, cancel := context.WithTimeout(context.TODO(), time.Second)
+		defer cancel()
+		_ = newCtx
+	}()
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: WithTimeout in loop, cancel never called (reports once per location)
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func leakyLoop(ctx context.Context) {
+	for i := 0; i < 10; i++ {
+		child, _ := context.WithTimeout(ctx, time.Second)
+		_ = child
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Safe: WithTimeout in loop WITH defer cancel
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func properLoop(ctx context.Context) {
+	for i := 0; i < 10; i++ {
+		child, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		_ = child
+	}
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: cancel assigned to variable but never called
+	{[]string{`
+package main
+
+import "context"
+
+func storeCancel(ctx context.Context) {
+	_, cancel := context.WithCancel(ctx)
+	_ = cancel
+}
+`}, 1, gosec.NewConfig()},
+
+	// Safe: cancel assigned to interface and called
+	{[]string{`
+package main
+
+import "context"
+
+func interfaceCancel(ctx context.Context) {
+	_, cancel := context.WithCancel(ctx)
+	var fn func() = cancel
+	defer fn()
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: nested WithCancel calls, inner one not canceled
+	{[]string{`
+package main
+
+import "context"
+
+func nestedContext(ctx context.Context) {
+	ctx1, cancel1 := context.WithCancel(ctx)
+	defer cancel1()
+
+	ctx2, _ := context.WithCancel(ctx1)
+	_ = ctx2
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: loop with goroutine launch (hasBlocking=true)
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func spawnWorkers(ctx context.Context) {
+	for {
+		go func() {
+			time.Sleep(time.Millisecond)
+		}()
+		time.Sleep(time.Second)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: loop with defer that has blocking call
+	{[]string{`
+package main
+
+import (
+	"context"
+	"os"
+	"time"
+)
+
+func deferredWrites(ctx context.Context) {
+	for {
+		defer func() {
+			os.WriteFile("log.txt", []byte("data"), 0644)
+		}()
+		time.Sleep(time.Second)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: infinite loop with blocking interface method call
+	{[]string{`
+package main
+
+import (
+	"context"
+	"io"
+	"time"
+)
+
+func readLoop(ctx context.Context, r io.Reader) {
+	buf := make([]byte, 1024)
+	for {
+		r.Read(buf)
+		time.Sleep(time.Millisecond)
+	}
+}
+`}, 1, gosec.NewConfig()},
+
+	// Safe: loop with http.Client.Do has external exit via error
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+)
+
+func fetchWithBreak(ctx context.Context) error {
+	client := &http.Client{}
+	for i := 0; i < 5; i++ {
+		req, _ := http.NewRequest("GET", "https://example.com", nil)
+		_, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+`}, 0, gosec.NewConfig()},
 }
