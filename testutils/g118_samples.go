@@ -189,4 +189,166 @@ func worker(ctx context.Context, max int) {
 	}
 }
 `}, 0, gosec.NewConfig()},
+
+	// Vulnerable: context.WithCancel variant (not just WithTimeout)
+	{[]string{`
+package main
+
+import "context"
+
+func work(ctx context.Context) {
+	child, _ := context.WithCancel(ctx)
+	_ = child
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: context.WithDeadline variant
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func work(ctx context.Context) {
+	child, _ := context.WithDeadline(ctx, time.Now().Add(time.Second))
+	_ = child
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: goroutine uses context.TODO instead of request context
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_ = ctx
+	go func() {
+		bg := context.TODO()
+		_ = bg
+	}()
+}
+`}, 1, gosec.NewConfig()},
+
+	// Note: nested goroutines are not detected by current implementation
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+)
+
+func handler(r *http.Request) {
+	_ = r.Context()
+	go func() {
+		go func() {
+			ctx := context.Background()
+			_ = ctx
+		}()
+	}()
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: function parameter ignored in goroutine
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func worker(ctx context.Context) {
+	_ = ctx
+	go func() {
+		newCtx := context.Background()
+		_, _ = context.WithTimeout(newCtx, time.Second)
+	}()
+}
+`}, 2, gosec.NewConfig()},
+
+	// Note: channel range loops are not detected as blocking by current implementation
+	{[]string{`
+package main
+
+import "context"
+
+func consume(ctx context.Context, ch <-chan int) {
+	_ = ctx
+	for val := range ch {
+		_ = val
+	}
+}
+`}, 0, gosec.NewConfig()},
+
+	// Note: select loops without ctx.Done are not detected by current implementation
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func selectLoop(ctx context.Context, ch <-chan int) {
+	_ = ctx
+	for {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+		}
+	}
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: multiple context creations, one missing cancel
+	{[]string{`
+package main
+
+import "context"
+
+func multiContext(ctx context.Context) {
+	ctx1, cancel1 := context.WithCancel(ctx)
+	defer cancel1()
+	_ = ctx1
+
+	ctx2, _ := context.WithCancel(ctx)
+	_ = ctx2
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: cancel returned to caller (analyzer cannot verify caller will use it)
+	{[]string{`
+package main
+
+import "context"
+
+func createContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithCancel(ctx)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Note: simple goroutines with Background() not detected when request param unused
+	{[]string{`
+package main
+
+import (
+	"context"
+	"net/http"
+)
+
+func simpleHandler(w http.ResponseWriter, r *http.Request) {
+	go func() {
+		ctx := context.Background()
+		_ = ctx
+	}()
+}
+`}, 0, gosec.NewConfig()},
 }
