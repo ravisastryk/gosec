@@ -59,4 +59,46 @@ func preparedStatement(db *sql.DB, r *http.Request) {
 	db.Query("SELECT * FROM users WHERE name = ?", name)
 }
 `}, 0, gosec.NewConfig()},
+
+	// Field tracking test 1: Struct literal with tainted field (tests isFieldOfAllocTainted)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type Query struct {
+	SQL string
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	q := &Query{SQL: r.FormValue("input")}
+	db.Query(q.SQL)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Field tracking test 2: Function returns struct (tests isFieldTaintedViaCall)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type Config struct {
+	Value string
+}
+
+func newConfig(v string) *Config {
+	return &Config{Value: v}
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	cfg := newConfig(r.FormValue("input"))
+	db.Query(cfg.Value)
+}
+`}, 1, gosec.NewConfig()},
 }

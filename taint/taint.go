@@ -888,6 +888,7 @@ func (a *Analyzer) isFieldOfAllocTainted(alloc *ssa.Alloc, fieldIdx int, fn *ssa
 		if !ok || fa.Field != fieldIdx {
 			continue
 		}
+
 		if fa.Referrers() == nil {
 			continue
 		}
@@ -916,7 +917,18 @@ func (a *Analyzer) isFieldAccessOnPointerTainted(unop *ssa.UnOp, fieldIdx int, f
 // It looks inside the callee to find the returned struct allocation and checks
 // whether the specific field was assigned data derived from tainted arguments.
 func (a *Analyzer) isFieldTaintedViaCall(call *ssa.Call, fieldIdx int, callee *ssa.Function, callerFn *ssa.Function, visited map[ssa.Value]bool, depth int) bool {
-	if depth > maxTaintDepth || callee == nil || callee.Blocks == nil {
+	if depth > maxTaintDepth || callee == nil {
+		return false
+	}
+
+	// If we don't have SSA blocks (external function or no body), use fallback logic:
+	// Assume the field is tainted if any argument to the constructor is tainted.
+	if callee.Blocks == nil {
+		for _, arg := range call.Call.Args {
+			if a.isTainted(arg, callerFn, visited, depth) {
+				return true
+			}
+		}
 		return false
 	}
 
