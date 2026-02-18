@@ -1127,4 +1127,129 @@ func handler(db *sql.DB, r *http.Request) {
 	db.Query("SELECT * FROM data WHERE value = '" + container.Data + "'")
 }
 `}, 1, gosec.NewConfig()},
+
+	// Minimal tests for maximum branch coverage
+
+	// Test 49: URL sanitizer doesn't prevent SQL injection
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"net/url"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("data")
+	sanitized := url.QueryEscape(userInput)
+	db.Query("SELECT * FROM data WHERE value = '" + sanitized + "'")
+}
+`}, 1, gosec.NewConfig()},
+
+	// Test 50: Empty/nil handling
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	query := ""
+	if r != nil {
+		query = "SELECT * FROM users WHERE id = " + r.FormValue("id")
+	}
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Test 51: Global variable taint source
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"os"
+)
+
+func handler(db *sql.DB) {
+	userInput := os.Getenv("USER_ID")
+	db.Query("DELETE FROM users WHERE id = " + userInput)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Test 52: Taint through interface method
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type Getter interface {
+	Get(string) string
+}
+
+func query(db *sql.DB, g Getter) {
+	id := g.Get("id")
+	db.Query("SELECT * FROM users WHERE id = " + id)
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	query(db, r.URL.Query())
+}
+`}, 1, gosec.NewConfig()},
+
+	// Test 53: Const value (safe)
+	{[]string{`
+package main
+
+import "database/sql"
+
+func handler(db *sql.DB) {
+	const userID = "safe123"
+	db.Query("SELECT * FROM users WHERE id = " + userID)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Test 54: Taint through builtin append
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	parts := []string{"SELECT * FROM users WHERE id = "}
+	parts = append(parts, r.FormValue("id"))
+	db.Query(parts[0] + parts[1])
+}
+`}, 1, gosec.NewConfig()},
+
+	// Test 55: FreeVar returns false (closure limitation)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func makeQuery() func(*sql.DB) {
+	const id = "123"
+	return func(db *sql.DB) {
+		db.Query("SELECT * FROM users WHERE id = " + id)
+	}
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	q := makeQuery()
+	q(db)
+}
+`}, 0, gosec.NewConfig()},
 }
