@@ -1252,4 +1252,693 @@ func handler(db *sql.DB, r *http.Request) {
 	q(db)
 }
 `}, 0, gosec.NewConfig()},
+
+	// Lookup operation (map access)
+	// NOTE: Map value taint tracking not yet supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInputs := map[string]string{
+		"query": r.FormValue("q"),
+	}
+	query := "SELECT * FROM users WHERE name = '" + userInputs["query"] + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Type assertion with tainted data
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var data interface{} = r.FormValue("data")
+	str := data.(string)
+	query := "SELECT * FROM users WHERE id = '" + str + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Slice operation on tainted input
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	inputs := []string{r.FormValue("a"), r.FormValue("b")}
+	subset := inputs[0:1]
+	query := "SELECT * FROM users WHERE id = '" + subset[0] + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Unary operation (pointer dereference) on tainted data
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("id")
+	ptr := &userInput
+	query := "SELECT * FROM users WHERE id = '" + *ptr + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// ChangeType operation with unsafe pointer conversion
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"unsafe"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("data")
+	bytes := []byte(userInput)
+	ptr := unsafe.Pointer(&bytes[0])
+	str := *(*string)(ptr)
+	query := "SELECT * FROM users WHERE data = '" + str + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Multi-return with conditional (Phi node)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func getData(r *http.Request) (string, error) {
+	return r.FormValue("id"), nil
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	var id string
+	if true {
+		id, _ = getData(r)
+	} else {
+		id = "default"
+	}
+	query := "SELECT * FROM users WHERE id = '" + id + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Array element access with tainted data
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var inputs [3]string
+	inputs[0] = r.FormValue("id")
+	query := "SELECT * FROM users WHERE id = '" + inputs[0] + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Interface conversion with tainted data
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("data")
+	var iface interface{} = userInput
+	str, _ := iface.(string)
+	query := "SELECT * FROM users WHERE data = '" + str + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Nested type conversions with tainted data
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type CustomString string
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("id")
+	custom := CustomString(userInput)
+	str := string(custom)
+	query := "SELECT * FROM users WHERE id = '" + str + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Conditional assignment with potential nil (Phi node)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var data string
+	if r.Method == "POST" {
+		data = r.FormValue("data")
+	}
+	if data != "" {
+		query := "SELECT * FROM users WHERE data = '" + data + "'"
+		db.Query(query)
+	}
+}
+`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+
+	// Global variable with tainted data
+	// NOTE: Global variable taint tracking not yet supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+var globalQuery string
+
+func handler(db *sql.DB, r *http.Request) {
+	globalQuery = r.FormValue("query")
+	executeQuery(db)
+}
+
+func executeQuery(db *sql.DB) {
+	db.Query(globalQuery)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Complex Phi node - multiple branches converging
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var id string
+	switch r.Method {
+	case "GET":
+		id = r.URL.Query().Get("id")
+	case "POST":
+		id = r.FormValue("id")
+	case "PUT":
+		id = r.Header.Get("X-ID")
+	default:
+		id = "default"
+	}
+	query := "SELECT * FROM users WHERE id = '" + id + "'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Advanced interprocedural - deep call chain
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("name")
+	result := processLevel1(userInput)
+	executeQuery(db, result)
+}
+
+func processLevel1(input string) string {
+	return processLevel2(input)
+}
+
+func processLevel2(input string) string {
+	return processLevel3(input)
+}
+
+func processLevel3(input string) string {
+	return "SELECT * FROM users WHERE name = '" + input + "'"
+}
+
+func executeQuery(db *sql.DB, query string) {
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Interprocedural with struct field assignment
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type QueryBuilder struct {
+	Filter string
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	qb := &QueryBuilder{}
+	setFilter(qb, r)
+	executeQueryBuilder(db, qb)
+}
+
+func setFilter(qb *QueryBuilder, r *http.Request) {
+	qb.Filter = r.FormValue("filter")
+}
+
+func executeQueryBuilder(db *sql.DB, qb *QueryBuilder) {
+	query := "SELECT * FROM users WHERE " + qb.Filter
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Global struct with tainted field
+	// NOTE: Global variable taint tracking not yet supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type Config struct {
+	SearchTerm string
+}
+
+var appConfig Config
+
+func handler(db *sql.DB, r *http.Request) {
+	appConfig.SearchTerm = r.FormValue("search")
+	search(db)
+}
+
+func search(db *sql.DB) {
+	query := "SELECT * FROM products WHERE name LIKE '%" + appConfig.SearchTerm + "%'"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Complex Phi with nested conditionals
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var query string
+	if r.Method == "POST" {
+		if r.Header.Get("Content-Type") == "application/json" {
+			query = r.FormValue("json_query")
+		} else {
+			query = r.FormValue("form_query")
+		}
+	} else {
+		if r.URL.Query().Get("type") == "advanced" {
+			query = r.URL.Query().Get("advanced_query")
+		} else {
+			query = r.URL.Query().Get("simple_query")
+		}
+	}
+	sql := "SELECT * FROM data WHERE condition = '" + query + "'"
+	db.Query(sql)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Interprocedural with multiple parameters
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	name := r.FormValue("name")
+	email := r.FormValue("email")
+	query := buildUserQuery(name, email)
+	db.Query(query)
+}
+
+func buildUserQuery(name, email string) string {
+	return combineFields("users", name, email)
+}
+
+func combineFields(table, field1, field2 string) string {
+	return "SELECT * FROM " + table + " WHERE name = '" + field1 + "' OR email = '" + field2 + "'"
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Interprocedural with return value from tainted parameter
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"strings"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("search")
+	sanitized := attemptSanitize(userInput)
+	query := "SELECT * FROM users WHERE name = '" + sanitized + "'"
+	db.Query(query)
+}
+
+func attemptSanitize(input string) string {
+	// Ineffective sanitization - still tainted
+	return strings.TrimSpace(input)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Complex Phi with loop and conditional
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var result string
+	items := r.URL.Query()["items"]
+	for i, item := range items {
+		if i == 0 {
+			result = item
+		} else {
+			result = result + "," + item
+		}
+	}
+	query := "SELECT * FROM users WHERE id IN (" + result + ")"
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Interprocedural with closure capturing tainted variable
+	// NOTE: Closure capture taint tracking not yet fully supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("id")
+
+	queryFunc := func(db *sql.DB) {
+		query := "SELECT * FROM users WHERE id = '" + userInput + "'"
+		db.Query(query)
+	}
+
+	queryFunc(db)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Multiple globals with taint propagation
+	// NOTE: Global variable taint tracking not yet supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+var (
+	globalFilter string
+	globalTable  string
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	globalFilter = r.FormValue("filter")
+	globalTable = "users"
+	executeGlobalQuery(db)
+}
+
+func executeGlobalQuery(db *sql.DB) {
+	query := "SELECT * FROM " + globalTable + " WHERE " + globalFilter
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Interprocedural with variadic function
+	// NOTE: Variadic parameter taint tracking not yet fully supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"strings"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	id1 := r.FormValue("id1")
+	id2 := r.FormValue("id2")
+	query := buildQuery("users", id1, id2)
+	db.Query(query)
+}
+
+func buildQuery(table string, ids ...string) string {
+	return "SELECT * FROM " + table + " WHERE id IN ('" + strings.Join(ids, "','") + "')"
+}
+`}, 0, gosec.NewConfig()},
+
+	// Complex Phi with ternary-like pattern
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("query")
+	var query string
+
+	admin := r.Header.Get("X-Admin") == "true"
+	if admin {
+		query = "SELECT * FROM admin WHERE " + userInput
+	} else {
+		query = "SELECT * FROM users WHERE " + userInput
+	}
+
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Interprocedural with method receiver
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type Database struct {
+	db *sql.DB
+}
+
+func (d *Database) Search(filter string) {
+	query := "SELECT * FROM users WHERE " + filter
+	d.db.Query(query)
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	database := &Database{db: db}
+	userFilter := r.FormValue("filter")
+	database.Search(userFilter)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Global function pointer with tainted call
+	// NOTE: Function pointer taint tracking not yet supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+var queryBuilder func(string) string
+
+func init() {
+	queryBuilder = func(input string) string {
+		return "SELECT * FROM users WHERE name = '" + input + "'"
+	}
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("name")
+	query := queryBuilder(userInput)
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Interprocedural with slice append operations
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"strings"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	conditions := []string{}
+	if name := r.FormValue("name"); name != "" {
+		conditions = append(conditions, "name='"+name+"'")
+	}
+	if email := r.FormValue("email"); email != "" {
+		conditions = append(conditions, "email='"+email+"'")
+	}
+	query := "SELECT * FROM users WHERE " + strings.Join(conditions, " AND ")
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+
+	// Complex Phi with goto statement
+	// NOTE: Goto statement creates complex control flow that's not fully tracked - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var query string
+
+	if r.Method == "GET" {
+		query = r.URL.Query().Get("q")
+		goto execute
+	}
+
+	query = r.FormValue("q")
+
+execute:
+	sql := "SELECT * FROM users WHERE search = '" + query + "'"
+	db.Query(sql)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Interprocedural with interface implementation
+	// NOTE: Interface method taint tracking not yet fully supported - documented limitation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+type QueryExecutor interface {
+	Execute(db *sql.DB, query string)
+}
+
+type SimpleExecutor struct{}
+
+func (e *SimpleExecutor) Execute(db *sql.DB, query string) {
+	db.Query(query)
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := r.FormValue("query")
+	query := "SELECT * FROM users WHERE " + userInput
+
+	var executor QueryExecutor = &SimpleExecutor{}
+	executor.Execute(db, query)
+}
+`}, 0, gosec.NewConfig()},
+
+	// Multiple Phi nodes with complex control flow
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	var table, filter string
+
+	authLevel := r.Header.Get("Auth-Level")
+	switch authLevel {
+	case "admin":
+		table = "admin_users"
+		filter = r.FormValue("admin_filter")
+	case "user":
+		table = "users"
+		filter = r.FormValue("user_filter")
+	default:
+		table = "public_users"
+		filter = r.FormValue("public_filter")
+	}
+
+	var orderBy string
+	if r.URL.Query().Get("sort") == "name" {
+		orderBy = "name ASC"
+	} else {
+		orderBy = "created_at DESC"
+	}
+
+	query := "SELECT * FROM " + table + " WHERE " + filter + " ORDER BY " + orderBy
+	db.Query(query)
+}
+`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
 }

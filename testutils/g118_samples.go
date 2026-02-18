@@ -1419,4 +1419,94 @@ func execInLoop(ctx context.Context, db *sql.DB) {
 	}
 }
 `}, 1, gosec.NewConfig()},
+
+	// Safe: defer with blocking call is okay (no infinite loop risk)
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func worker(ctx context.Context) {
+	defer time.Sleep(time.Second)
+	// work...
+}
+`}, 0, gosec.NewConfig()},
+
+	// Safe: cancel function stored in struct field and called in method
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+type Job struct {
+	cancel context.CancelFunc
+}
+
+func (j *Job) Start(ctx context.Context) {
+	childCtx, cancel := context.WithTimeout(ctx, time.Second)
+	j.cancel = cancel
+	_ = childCtx
+}
+
+func (j *Job) Stop() {
+	if j.cancel != nil {
+		j.cancel()
+	}
+}
+
+func run(ctx context.Context) {
+	job := &Job{}
+	job.Start(ctx)
+	job.Stop()
+}
+`}, 0, gosec.NewConfig()},
+
+	// Vulnerable: cancel function stored in struct field but never called
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+type Task struct {
+	cancelFn context.CancelFunc
+}
+
+func (t *Task) Execute(ctx context.Context) {
+	childCtx, cancel := context.WithTimeout(ctx, time.Second)
+	t.cancelFn = cancel
+	_ = childCtx
+}
+
+func run(ctx context.Context) {
+	task := &Task{}
+	task.Execute(ctx)
+	// Never calls task.cancelFn()
+}
+`}, 1, gosec.NewConfig()},
+
+	// Vulnerable: multiple uncalled cancel functions
+	{[]string{`
+package main
+
+import (
+	"context"
+	"time"
+)
+
+func multipleViolations(ctx context.Context) {
+	_, cancel1 := context.WithTimeout(ctx, time.Second)
+	_, cancel2 := context.WithTimeout(ctx, time.Second)
+	_, cancel3 := context.WithTimeout(ctx, time.Second)
+	_, _, _ = cancel1, cancel2, cancel3
+}
+`}, 3, gosec.NewConfig()},
 }
