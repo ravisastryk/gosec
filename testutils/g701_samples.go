@@ -1287,7 +1287,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + str + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Slice operation on tainted input
 	{[]string{`
@@ -1304,7 +1304,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + subset[0] + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Unary operation (pointer dereference) on tainted data
 	{[]string{`
@@ -1321,7 +1321,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + *ptr + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// ChangeType operation with unsafe pointer conversion
 	{[]string{`
@@ -1341,7 +1341,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE data = '" + str + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Multi-return with conditional (Phi node)
 	{[]string{`
@@ -1366,7 +1366,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + id + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Array element access with tainted data
 	{[]string{`
@@ -1383,7 +1383,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + inputs[0] + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Interface conversion with tainted data
 	{[]string{`
@@ -1401,7 +1401,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE data = '" + str + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Nested type conversions with tainted data
 	{[]string{`
@@ -1421,7 +1421,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + str + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Conditional assignment with potential nil (Phi node)
 	{[]string{`
@@ -1442,7 +1442,7 @@ func handler(db *sql.DB, r *http.Request) {
 		db.Query(query)
 	}
 }
-`}, 0, gosec.NewConfig()}, // NOTE: SSA pattern not yet fully supported
+`}, 1, gosec.NewConfig()},
 
 	// Global variable with tainted data
 	// NOTE: Global variable taint tracking not yet supported - documented limitation
@@ -1490,7 +1490,7 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id = '" + id + "'"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Advanced interprocedural - deep call chain
 	{[]string{`
@@ -1522,7 +1522,7 @@ func processLevel3(input string) string {
 func executeQuery(db *sql.DB, query string) {
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with struct field assignment
 	{[]string{`
@@ -1551,7 +1551,7 @@ func executeQueryBuilder(db *sql.DB, qb *QueryBuilder) {
 	query := "SELECT * FROM users WHERE " + qb.Filter
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 0, gosec.NewConfig()}, // NOTE: Some advanced patterns have limitations
 
 	// Global struct with tainted field
 	// NOTE: Global variable taint tracking not yet supported - documented limitation
@@ -1607,7 +1607,7 @@ func handler(db *sql.DB, r *http.Request) {
 	sql := "SELECT * FROM data WHERE condition = '" + query + "'"
 	db.Query(sql)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with multiple parameters
 	{[]string{`
@@ -1632,7 +1632,7 @@ func buildUserQuery(name, email string) string {
 func combineFields(table, field1, field2 string) string {
 	return "SELECT * FROM " + table + " WHERE name = '" + field1 + "' OR email = '" + field2 + "'"
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with return value from tainted parameter
 	{[]string{`
@@ -1655,7 +1655,7 @@ func attemptSanitize(input string) string {
 	// Ineffective sanitization - still tainted
 	return strings.TrimSpace(input)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Complex Phi with loop and conditional
 	{[]string{`
@@ -1679,10 +1679,9 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE id IN (" + result + ")"
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with closure capturing tainted variable
-	// NOTE: Closure capture taint tracking not yet fully supported - documented limitation
 	{[]string{`
 package main
 
@@ -1701,7 +1700,7 @@ func handler(db *sql.DB, r *http.Request) {
 
 	queryFunc(db)
 }
-`}, 0, gosec.NewConfig()},
+`}, 1, gosec.NewConfig()},
 
 	// Multiple globals with taint propagation
 	// NOTE: Global variable taint tracking not yet supported - documented limitation
@@ -1731,7 +1730,6 @@ func executeGlobalQuery(db *sql.DB) {
 `}, 0, gosec.NewConfig()},
 
 	// Interprocedural with variadic function
-	// NOTE: Variadic parameter taint tracking not yet fully supported - documented limitation
 	{[]string{`
 package main
 
@@ -1751,7 +1749,7 @@ func handler(db *sql.DB, r *http.Request) {
 func buildQuery(table string, ids ...string) string {
 	return "SELECT * FROM " + table + " WHERE id IN ('" + strings.Join(ids, "','") + "')"
 }
-`}, 0, gosec.NewConfig()},
+`}, 1, gosec.NewConfig()},
 
 	// Complex Phi with ternary-like pattern
 	{[]string{`
@@ -1775,7 +1773,7 @@ func handler(db *sql.DB, r *http.Request) {
 
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with method receiver
 	{[]string{`
@@ -1800,7 +1798,7 @@ func handler(db *sql.DB, r *http.Request) {
 	userFilter := r.FormValue("filter")
 	database.Search(userFilter)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Global function pointer with tainted call
 	// NOTE: Function pointer taint tracking not yet supported - documented limitation
@@ -1848,10 +1846,9 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM users WHERE " + strings.Join(conditions, " AND ")
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 
 	// Complex Phi with goto statement
-	// NOTE: Goto statement creates complex control flow that's not fully tracked - documented limitation
 	{[]string{`
 package main
 
@@ -1874,7 +1871,7 @@ execute:
 	sql := "SELECT * FROM users WHERE search = '" + query + "'"
 	db.Query(sql)
 }
-`}, 0, gosec.NewConfig()},
+`}, 1, gosec.NewConfig()},
 
 	// Interprocedural with interface implementation
 	// NOTE: Interface method taint tracking not yet fully supported - documented limitation
@@ -1940,5 +1937,5 @@ func handler(db *sql.DB, r *http.Request) {
 	query := "SELECT * FROM " + table + " WHERE " + filter + " ORDER BY " + orderBy
 	db.Query(query)
 }
-`}, 0, gosec.NewConfig()}, // NOTE: Advanced pattern - documented limitation
+`}, 1, gosec.NewConfig()},
 }
