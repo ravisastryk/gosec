@@ -86,4 +86,36 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(strconv.Itoa(num)))
 }
 `}, 0, gosec.NewConfig()},
+
+	// Interprocedural XSS
+	{[]string{`
+package main
+
+import (
+	"net/http"
+)
+
+func formatResponse(input string) []byte {
+	return []byte("<html>" + input + "</html>")
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	response := formatResponse(r.FormValue("data"))
+	w.Write(response)
+}
+`}, 1, gosec.NewConfig()},
+
+	// XSS through slice
+	{[]string{`
+package main
+
+import (
+	"net/http"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	messages := []string{r.FormValue("msg")}
+	w.Write([]byte(messages[0]))
+}
+`}, 1, gosec.NewConfig()},
 }

@@ -131,4 +131,38 @@ func handler(r *http.Request) {
 	os.Open("/tmp/file" + strconv.Itoa(num))
 }
 `}, 0, gosec.NewConfig()},
+
+	// Interprocedural path traversal
+	{[]string{`
+package main
+
+import (
+	"net/http"
+	"os"
+)
+
+func getFilePath(filename string) string {
+	return "/data/" + filename
+}
+
+func handler(r *http.Request) {
+	path := getFilePath(r.FormValue("file"))
+	os.Open(path)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Path traversal through slice
+	{[]string{`
+package main
+
+import (
+	"net/http"
+	"os"
+)
+
+func handler(r *http.Request) {
+	paths := []string{r.FormValue("path1"), r.FormValue("path2")}
+	os.Open(paths[0])
+}
+`}, 1, gosec.NewConfig()},
 }

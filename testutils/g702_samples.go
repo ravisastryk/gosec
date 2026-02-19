@@ -43,4 +43,55 @@ func safeCommand() {
 	exec.Command("ls", "-la").Run()
 }
 `}, 0, gosec.NewConfig()},
+
+	// Interprocedural command injection
+	{[]string{`
+package main
+
+import (
+	"net/http"
+	"os/exec"
+)
+
+func buildCommand(input string) *exec.Cmd {
+	return exec.Command("sh", "-c", input)
+}
+
+func handler(r *http.Request) {
+	cmd := buildCommand(r.FormValue("cmd"))
+	cmd.Run()
+}
+`}, 1, gosec.NewConfig()},
+
+	// Command injection through slice
+	{[]string{`
+package main
+
+import (
+	"net/http"
+	"os/exec"
+)
+
+func handler(r *http.Request) {
+	args := []string{r.FormValue("arg")}
+	cmd := exec.Command("cat", args[0])
+	cmd.Run()
+}
+`}, 1, gosec.NewConfig()},
+
+	// Command injection with string concatenation
+	{[]string{`
+package main
+
+import (
+	"net/http"
+	"os/exec"
+)
+
+func handler(r *http.Request) {
+	path := "/tmp/" + r.FormValue("file")
+	cmd := exec.Command("cat", path)
+	cmd.Run()
+}
+`}, 1, gosec.NewConfig()},
 }

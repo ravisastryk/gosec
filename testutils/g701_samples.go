@@ -1938,4 +1938,218 @@ func handler(db *sql.DB, r *http.Request) {
 	db.Query(query)
 }
 `}, 1, gosec.NewConfig()},
+
+	// Simple function return of tainted value
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func getUserInput(r *http.Request) string {
+	return r.FormValue("input")
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := getUserInput(r)
+	query := "SELECT * FROM users WHERE name = '" + userInput + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Taint through slice operations
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func handler(db *sql.DB, r *http.Request) {
+	filters := []string{r.FormValue("filter")}
+	query := "SELECT * FROM users WHERE status = '" + filters[0] + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Multiple function call chain
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func getInput(r *http.Request) string {
+	return r.FormValue("input")
+}
+
+func processInput(r *http.Request) string {
+	return getInput(r)
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	userInput := processInput(r)
+	query := "SELECT * FROM users WHERE name = '" + userInput + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with binary operation on parameter
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func buildFilter(userInput string, prefix string) string {
+	return prefix + userInput
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	filter := buildFilter(r.FormValue("filter"), "WHERE ")
+	query := "SELECT * FROM users " + filter
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with type conversion
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func convertToQuery(input interface{}) string {
+	return input.(string)
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	var userInput interface{} = r.FormValue("input")
+	queryPart := convertToQuery(userInput)
+	query := "SELECT * FROM users WHERE name = '" + queryPart + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with slice indexing
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func getFirst(items []string) string {
+	if len(items) > 0 {
+		return items[0]
+	}
+	return ""
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	filters := []string{r.FormValue("filter1"), r.FormValue("filter2")}
+	firstFilter := getFirst(filters)
+	query := "SELECT * FROM users WHERE status = '" + firstFilter + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with multiple params, only one tainted
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func buildQuery(table string, filter string) string {
+	return "SELECT * FROM " + table + " WHERE " + filter
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	query := buildQuery("users", r.FormValue("filter"))
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with phi node (conditional return)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func selectFilter(userFilter string, useUser bool) string {
+	var result string
+	if useUser {
+		result = userFilter
+	} else {
+		result = "default"
+	}
+	return result
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	filter := selectFilter(r.FormValue("filter"), true)
+	query := "SELECT * FROM users WHERE status = '" + filter + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with slice operation
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func getSubstring(items []string) string {
+	subItems := items[0:1]
+	return subItems[0]
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	inputs := []string{r.FormValue("input")}
+	value := getSubstring(inputs)
+	query := "SELECT * FROM users WHERE name = '" + value + "'"
+	db.Query(query)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Interprocedural with Extract (multi-return)
+	{[]string{`
+package main
+
+import (
+	"database/sql"
+	"net/http"
+)
+
+func splitInput(input string) (string, bool) {
+	return input, len(input) > 0
+}
+
+func handler(db *sql.DB, r *http.Request) {
+	filter, ok := splitInput(r.FormValue("filter"))
+	if ok {
+		query := "SELECT * FROM users WHERE status = '" + filter + "'"
+		db.Query(query)
+	}
+}
+`}, 1, gosec.NewConfig()},
 }

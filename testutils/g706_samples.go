@@ -74,4 +74,38 @@ func handler(r *http.Request) {
 	log.Printf("Processing ID: %d", num)
 }
 `}, 0, gosec.NewConfig()},
+
+	// Interprocedural log injection
+	{[]string{`
+package main
+
+import (
+	"log"
+	"net/http"
+)
+
+func formatLogMessage(input string) string {
+	return "User input: " + input
+}
+
+func handler(r *http.Request) {
+	msg := formatLogMessage(r.FormValue("data"))
+	log.Println(msg)
+}
+`}, 1, gosec.NewConfig()},
+
+	// Log injection through slice
+	{[]string{`
+package main
+
+import (
+	"log"
+	"net/http"
+)
+
+func handler(r *http.Request) {
+	inputs := []string{r.FormValue("input")}
+	log.Println("User said:", inputs[0])
+}
+`}, 1, gosec.NewConfig()},
 }
