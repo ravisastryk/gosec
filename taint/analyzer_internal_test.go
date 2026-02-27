@@ -1,6 +1,7 @@
 package taint
 
 import (
+	"go/ast"
 	"go/constant"
 	"go/parser"
 	"go/token"
@@ -260,6 +261,21 @@ func TestLookupNamedTypeMemberIsNotTypeName(t *testing.T) {
 	}
 }
 
+func TestLookupNamedTypeMemberNotInScope(t *testing.T) {
+	t.Parallel()
+	prog := ssa.NewProgram(token.NewFileSet(), 0)
+
+	// Package with the right path but the requested name is absent from scope.
+	pkg := types.NewPackage("net/http", "http")
+	pkg.MarkComplete()
+	prog.CreatePackage(pkg, nil, nil, false)
+
+	// "Missing" is not in scope — exercises the member==nil continue branch.
+	if got := lookupNamedType("net/http.Missing", prog); got != nil {
+		t.Fatalf("expected nil for absent type name, got %v", got)
+	}
+}
+
 // ── guardsSatisfied ───────────────────────────────────────────────────────────
 
 func TestGuardsSatisfiedEmptyGuards(t *testing.T) {
@@ -373,4 +389,108 @@ func TestResolveOriginalTypeDefault(t *testing.T) {
 	if !types.Identical(got, types.Typ[types.String]) {
 		t.Fatalf("expected string type, got %v", got)
 	}
+}
+
+func TestAnalyzeSetsProgAndBuildsCallGraph(t *testing.T) {
+	t.Parallel()
+
+	// Build a minimal self-contained package with a local interface W.
+	// Function f calls w.Write() which is configured as a sink below.
+	src := `package p
+
+type W interface{ Write([]byte) (int, error) }
+type B struct{}
+
+func (b *B) Write(p []byte) (int, error) { return 0, nil }
+func f(w W)                               { w.Write([]byte("hello")) }
+`
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info := &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Scopes:     make(map[ast.Node]*types.Scope),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+	}
+	pkg, err := (&types.Config{}).Check("p", fset, []*ast.File{parsed}, info)
+	if err != nil {
+		t.Fatalf("type-check: %v", err)
+	}
+	prog := ssa.NewProgram(fset, ssa.BuilderMode(0))
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{parsed}, info, true)
+	prog.Build()
+
+	fn := ssaPkg.Func("f")
+	if fn == nil {
+		t.Fatal("SSA function f not found")
+	}
+
+	// Sink matches the invoke call w.Write inside f; ArgTypeGuards left empty
+	// so guardsSatisfied is reached and returns true without further work.
+	analyzer := New(&Config{
+		Sinks: []Sink{
+			{Package: "p", Receiver: "W", Method: "Write"},
+		},
+	})
+
+	_ = analyzer.Analyze(prog, []*ssa.Function{fn})
+}
+
+func TestResolveOriginalTypeMakeInterface(t *testing.T) {
+	t.Parallel()
+	// Build a minimal, self-contained SSA program (no external imports) that
+	// boxes a concrete *B value into interface W.  This exercises the
+	// *ssa.MakeInterface branch of resolveOriginalType.
+	src := `package p
+
+type W interface{ Write([]byte) (int, error) }
+type B struct{}
+
+func (b *B) Write(p []byte) (int, error) { return 0, nil }
+func f() W                               { return &B{} }
+`
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info := &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Scopes:     make(map[ast.Node]*types.Scope),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+	}
+	pkg, err := (&types.Config{}).Check("p", fset, []*ast.File{parsed}, info)
+	if err != nil {
+		t.Fatalf("type-check: %v", err)
+	}
+	prog := ssa.NewProgram(fset, ssa.BuilderMode(0))
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{parsed}, info, true)
+	prog.Build()
+
+	fn := ssaPkg.Func("f")
+	if fn == nil {
+		t.Fatal("SSA function f not found")
+	}
+	for _, blk := range fn.Blocks {
+		for _, instr := range blk.Instrs {
+			mi, ok := instr.(*ssa.MakeInterface)
+			if !ok {
+				continue
+			}
+			got := resolveOriginalType(mi)
+			if got == nil {
+				t.Fatal("resolveOriginalType returned nil for MakeInterface")
+			}
+			return
+		}
+	}
+	t.Fatal("no MakeInterface instruction found in function f")
 }
